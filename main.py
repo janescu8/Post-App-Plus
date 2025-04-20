@@ -142,7 +142,8 @@ def login_ui():
                 st.success("✅ 註冊成功，請切換至登入。")
             else:
                 st.error("⚠️ 帳號已存在。")
-    else:
+
+    elif choice.startswith("登入"):
         username = st.text_input("帳號 | Username", key="login_u")
         password = st.text_input("密碼 | Password", type="password", key="login_p")
         if st.button("登入 | Login"):
