@@ -19,6 +19,9 @@ from googleapiclient.http import MediaIoBaseUpload
 
 # =============================================================================
 # ☁️ Google Drive 上傳功能
+import atexit
+from googleapiclient.http import MediaIoBaseDownload
+
 # =============================================================================
 @st.cache_resource
 def get_drive_service():
@@ -28,6 +31,84 @@ def get_drive_service():
 
 DRIVE_SERVICE = get_drive_service()
 DRIVE_FOLDER_ID = st.secrets["drive"]["folder_id"]
+
+# 初始化 DB 路徑
+DB_PATH = "community.db"
+
+# 嘗試從 Google Drive 下載 DB
+@st.cache_resource
+def download_db_from_drive(filename="community.db"):
+    results = DRIVE_SERVICE.files().list(q=f"'{DRIVE_FOLDER_ID}' in parents and name='{filename}'",
+                                         spaces='drive', fields='files(id, name)').execute()
+    items = results.get('files', [])
+    if items:
+        file_id = items[0]['id']
+        request = DRIVE_SERVICE.files().get_media(fileId=file_id)
+        with open(filename, "wb") as f:
+            downloader = MediaIoBaseDownload(f, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+        return file_id
+    return None
+
+@st.cache_resource
+def connect_db():
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
+
+# 嘗試載入 DB
+db_file_id = download_db_from_drive()
+conn = connect_db()
+c = conn.cursor()
+
+# 初始化資料表
+c.executescript("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        pw_hash TEXT NOT NULL,
+        is_admin INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS posts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        author_id INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        image_url TEXT,
+        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(author_id) REFERENCES users(id)
+    );
+    CREATE TABLE IF NOT EXISTS likes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        post_id INTEGER NOT NULL,
+        UNIQUE(user_id, post_id)
+    );
+    CREATE TABLE IF NOT EXISTS comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        post_id INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender_id INTEGER NOT NULL,
+        receiver_id INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+""")
+conn.commit()
+
+# 如果第一次沒載到 DB（等於是第一次建立），就立即上傳一份空 DB
+if db_file_id is None:
+    def upload_db_to_drive(file_id=None, filename="community.db"):
+        media = MediaIoBaseUpload(open(filename, 'rb'), mimetype='application/x-sqlite3')
+        file_metadata = {"name": filename, "parents": [DRIVE_FOLDER_ID]}
+        file = DRIVE_SERVICE.files().create(body=file_metadata, media_body=media, fields="id").execute()
+        return file.get("id")
+    db_file_id = upload_db_to_drive()
+    st.info("📂 已建立並上傳初始資料庫 community.db 至 Google Drive。")
 
 def upload_to_drive(uploaded_file):
     
