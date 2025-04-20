@@ -252,5 +252,5 @@ for post in posts:
 # ✅ 安全統一觸發 rerun（避免 AttributeError）
 if st.session_state.get("pending_rerun") and st.session_state.user is not None:
     st.session_state["pending_rerun"] = False
-    st.experimental_rerun()
+    st.rerun()
 
