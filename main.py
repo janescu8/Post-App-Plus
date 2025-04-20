@@ -148,6 +148,11 @@ atexit.register(save_and_backup_db)
 
 init_db()
 
+# ✅ 提前處理安全 rerun（最上方處理，避免 stop() 干擾）
+if st.session_state.get("pending_rerun"):
+    st.session_state["pending_rerun"] = False
+    st.experimental_rerun()
+
 # =============================================================================
 # 🔐 使用者驗證 | Auth Logic
 # =============================================================================
@@ -306,7 +311,4 @@ for post in posts:
 
     st.markdown("---")
 
-# ✅ 統一控制 rerun，避免 AttributeError 錯誤
-if st.session_state.get("pending_rerun"):
-    st.session_state["pending_rerun"] = False
-    st.experimental_rerun()
+
