@@ -139,8 +139,10 @@ def login_ui():
         password = st.text_input("密碼 | Password", type="password")
         if st.button("註冊 | Register"):
             if register_user(username, password):
-                st.success("\u2705 註冊成功，請切換至登入。")
+                st.success("✅ 註冊成功，請切換至登入。")
             else:
+                st.error("⚠️ 帳號已存在。")
+    else:
                 st.error("\u26a0\ufe0f 帳號已存在。")
     else:
         username = st.text_input("帳號 | Username", key="login_u")
@@ -149,13 +151,19 @@ def login_ui():
             user = authenticate_user(username, password)
             if user:
                 st.session_state.user = user
-                st.experimental_rerun()
+                st.session_state.logged_in = True
+            else:
+                st.error("❌ 帳號或密碼錯誤。")
             else:
                 st.error("\u274c 帳號或密碼錯誤。")
 
 if st.session_state.user is None:
     login_ui()
     st.stop()
+
+if st.session_state.get("logged_in"):
+    st.session_state.logged_in = False
+    st.experimental_rerun()
 
 # =============================================================================
 # 📬 私訊功能 | Messaging
