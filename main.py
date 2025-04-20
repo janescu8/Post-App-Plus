@@ -212,7 +212,7 @@ for post in posts:
     st.subheader(f"{author}  🕒 {created}")
     st.write(content)
     if image_url:
-        st.image(image_url, use_column_width=True)
+        st.image(image_url, use_container_width=True)
 
     # Like button
     if st.button(f"👍 按讚 | Like", key=f"like_{post_id}"):
