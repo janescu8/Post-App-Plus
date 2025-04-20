@@ -31,7 +31,8 @@ DRIVE_FOLDER_ID = st.secrets["drive"]["folder_id"]
 
 def upload_to_drive(uploaded_file):
     try:
-        filename = uploaded_file.name
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        filename = f"img_{timestamp}_{uploaded_file.name}"
         file_bytes = uploaded_file.read()
         media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype=uploaded_file.type, resumable=True)
         file_metadata = {"name": filename, "parents": [DRIVE_FOLDER_ID]}
@@ -42,17 +43,96 @@ def upload_to_drive(uploaded_file):
         ).execute()
         return uploaded.get("webViewLink")
     except Exception as e:
+        st.error(f"❌ 圖片上傳失敗：{e}")
+        return None
+    except Exception as e:
         st.error(f"\u274c 上傳失敗：{e}")
         return None
 
 # =============================================================================
-# 🛠️ 資料庫初始化 | Initialize SQLite Database
+# 🛠️ 資料庫初始化 | Initialize SQLite Database from Google Drive
 # =============================================================================
+from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
+
+def download_db_from_drive(filename="community.db"):
+    # Check if file exists in Drive folder
+    results = DRIVE_SERVICE.files().list(q=f"'{DRIVE_FOLDER_ID}' in parents and name='{filename}'",
+                                         spaces='drive', fields='files(id, name)').execute()
+    items = results.get('files', [])
+    if items:
+        file_id = items[0]['id']
+        request = DRIVE_SERVICE.files().get_media(fileId=file_id)
+        fh = io.FileIO(filename, 'wb')
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        return file_id
+    return None
+
+def upload_db_to_drive(file_id=None, filename="community.db", versioned=False):
+    media = MediaIoBaseUpload(open(filename, 'rb'), mimetype='application/x-sqlite3')
+    if versioned:
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        file_metadata = {"name": f"backup_{timestamp}.db", "parents": [DRIVE_FOLDER_ID]}
+        DRIVE_SERVICE.files().create(body=file_metadata, media_body=media).execute()
+    if file_id:
+        file = DRIVE_SERVICE.files().update(fileId=file_id, media_body=media).execute()
+    else:
+        file_metadata = {"name": filename, "parents": [DRIVE_FOLDER_ID]}
+        file = DRIVE_SERVICE.files().create(body=file_metadata, media_body=media, fields="id").execute()
+    return file.get("id")
+
+# Download DB file from Drive (or create one if not exist)
+db_file_id = download_db_from_drive()
 DB_PATH = "community.db"
 conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 c = conn.cursor()
 
 def init_db():
+    with conn:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                pw_hash TEXT NOT NULL,
+                is_admin INTEGER DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS posts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                author_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                image_url TEXT,
+                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(author_id) REFERENCES users(id)
+            );
+            CREATE TABLE IF NOT EXISTS likes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                post_id INTEGER NOT NULL,
+                UNIQUE(user_id, post_id)
+            );
+            CREATE TABLE IF NOT EXISTS comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                post_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender_id INTEGER NOT NULL,
+                receiver_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
+init_db()
+
+# 每次修改 DB 後都自動更新 Drive 上的版本
+import atexit
+atexit.register(lambda: upload_db_to_drive(db_file_id, versioned=True)):
     with conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS users (
