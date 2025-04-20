@@ -1,4 +1,6 @@
 import streamlit as st
+st.set_page_config(page_title="Mini 社群平台 | Mini Social Platform", layout="wide")
+
 import sqlite3
 import bcrypt
 import io
