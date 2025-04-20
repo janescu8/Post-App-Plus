@@ -1,6 +1,5 @@
-import streamlit as st
-
 # ⚙️ 頁面配置 - 必須是第一個 Streamlit 指令
+import streamlit as st
 st.set_page_config(page_title="Mini 社群平台 | Mini Social Platform", layout="wide")
 
 import sqlite3
