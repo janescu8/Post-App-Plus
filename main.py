@@ -115,28 +115,14 @@ if db_file_id is None:
     st.info("📂 已建立並上傳初始資料庫 community.db 至 Google Drive。")
 
 def upload_to_drive(uploaded_file):
-    # 上傳圖片到 Google Drive 並回傳直接顯示的圖片網址
+    # 將圖片暫存到本地並轉為 base64 儲存到 DB
     if uploaded_file is None:
         return None
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    filename = f"img_{timestamp}_{uploaded_file.name}"
+    import base64
     file_bytes = uploaded_file.read()
-    media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype=uploaded_file.type, resumable=True)
-    file_metadata = {"name": filename, "parents": [DRIVE_FOLDER_ID]}
-    uploaded = DRIVE_SERVICE.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields="id"
-    ).execute()
-    file_id = uploaded.get("id")
-
-    # 設定檔案為公開可讀
-    DRIVE_SERVICE.permissions().create(
-        fileId=file_id,
-        body={"role": "reader", "type": "anyone"},
-    ).execute()
-
-    return f"https://drive.google.com/uc?export=view&id={file_id}"
+    encoded = base64.b64encode(file_bytes).decode('utf-8')
+    mime = uploaded_file.type
+    return f"data:{mime};base64,{encoded}"
 
 # =============================================================================
 # 🔐 使用者登入 / 註冊畫面 | Login / Register
