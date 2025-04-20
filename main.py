@@ -132,44 +132,11 @@ init_db()
 
 # 每次修改 DB 後都自動更新 Drive 上的版本
 import atexit
-atexit.register(lambda: upload_db_to_drive(db_file_id, versioned=True)):
-    with conn:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                pw_hash TEXT NOT NULL,
-                is_admin INTEGER DEFAULT 0
-            );
-            CREATE TABLE IF NOT EXISTS posts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                author_id INTEGER NOT NULL,
-                content TEXT NOT NULL,
-                image_url TEXT,
-                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(author_id) REFERENCES users(id)
-            );
-            CREATE TABLE IF NOT EXISTS likes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                post_id INTEGER NOT NULL,
-                UNIQUE(user_id, post_id)
-            );
-            CREATE TABLE IF NOT EXISTS comments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                post_id INTEGER NOT NULL,
-                content TEXT NOT NULL,
-                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sender_id INTEGER NOT NULL,
-                receiver_id INTEGER NOT NULL,
-                content TEXT NOT NULL,
-                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
+
+def save_and_backup_db():
+    upload_db_to_drive(db_file_id, versioned=True)
+
+atexit.register(save_and_backup_db)
 
 init_db()
 
