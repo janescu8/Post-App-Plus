@@ -41,7 +41,8 @@ def upload_to_drive(uploaded_file):
             media_body=media,
             fields="id, webViewLink"
         ).execute()
-        return uploaded.get("webViewLink")
+        file_id = uploaded.get("id")
+        return f"https://drive.google.com/uc?export=view&id={file_id}"
     except Exception as e:
         st.error(f"❌ 圖片上傳失敗：{e}")
         return None
