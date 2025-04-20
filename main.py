@@ -61,6 +61,12 @@ db_file_id = download_db_from_drive()
 conn = connect_db()
 c = conn.cursor()
 
+def send_message(sender_id, receiver_id, content):
+    c.execute("INSERT INTO messages (sender_id, receiver_id, content) VALUES (?, ?, ?)",
+              (sender_id, receiver_id, content))
+    conn.commit()
+    upload_db_to_drive(filename=DB_PATH, file_id=db_file_id)
+
 # 初始化資料表
 
 def get_messages(user_id):
