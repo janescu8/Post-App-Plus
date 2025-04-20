@@ -157,7 +157,8 @@ if st.session_state.user is None:
                     "username": username,
                     "is_admin": bool(row[2])
                 }
-                st.rerun()
+                st.session_state["pending_rerun"] = True
+                st.stop()
             else:
                 st.error("❌ 帳號或密碼錯誤")
     st.stop()
@@ -248,4 +249,8 @@ for post in posts:
 
     st.markdown("---")
 
+# ✅ 安全統一觸發 rerun（避免 AttributeError）
+if st.session_state.get("pending_rerun"):
+    st.session_state["pending_rerun"] = False
+    st.experimental_rerun()
 
