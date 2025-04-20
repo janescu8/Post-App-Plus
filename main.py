@@ -143,6 +143,16 @@ def login_ui():
             else:
                 st.error("⚠️ 帳號已存在。")
     else:
+        username = st.text_input("帳號 | Username", key="login_u")
+        password = st.text_input("密碼 | Password", type="password", key="login_p")
+        if st.button("登入 | Login"):
+            user = authenticate_user(username, password)
+            if user:
+                st.session_state.user = user
+                st.session_state.logged_in = True
+            else:
+                st.error("❌ 帳號或密碼錯誤。")
+    else:
                 st.error("\u26a0\ufe0f 帳號已存在。")
     else:
         username = st.text_input("帳號 | Username", key="login_u")
