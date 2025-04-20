@@ -111,7 +111,21 @@ if db_file_id is None:
     st.info("📂 已建立並上傳初始資料庫 community.db 至 Google Drive。")
 
 def upload_to_drive(uploaded_file):
-    
+    # 上傳圖片到 Google Drive 並回傳直接顯示的圖片網址
+    if uploaded_file is None:
+        return None
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    filename = f"img_{timestamp}_{uploaded_file.name}"
+    file_bytes = uploaded_file.read()
+    media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype=uploaded_file.type, resumable=True)
+    file_metadata = {"name": filename, "parents": [DRIVE_FOLDER_ID]}
+    uploaded = DRIVE_SERVICE.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields="id"
+    ).execute()
+    file_id = uploaded.get("id")
+    return f"https://drive.google.com/uc?export=view&id={file_id}"
 
 # =============================================================================
 # 📬 私訊功能 | Messaging
