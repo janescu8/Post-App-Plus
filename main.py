@@ -289,7 +289,7 @@ for post in posts:
             c.execute("DELETE FROM likes WHERE post_id = ?", (post_id,))
             conn.commit()
             st.success("✅ 貼文已刪除")
-            st.experimental_rerun()
+            st.session_state["pending_rerun"] = True
 
     # 留言顯示與新增
     with st.expander("💬 留言 / Comments"):
