@@ -1,7 +1,9 @@
-# ⚙️ 頁面配置 - 必須是第一個 Streamlit 指令
 import streamlit as st
+
+# ⚙️ 頁面配置 - 必須是第一個 Streamlit 指令
 st.set_page_config(page_title="Mini 社群平台 | Mini Social Platform", layout="wide")
 
+# 所有其他匯入放在 set_page_config 之後
 import sqlite3
 import bcrypt
 import io
@@ -14,7 +16,7 @@ from googleapiclient.http import MediaIoBaseUpload
 # 1. 讀取 GCP & Drive
 # -----------------------
 
-# cache_resource 必須在 set_page_config 之後定義
+# cache_resource 必須在 set_page_config 執行完之後才使用
 @st.cache_resource
 def get_drive_service():
     creds_info = st.secrets["gcp_service_account"]
