@@ -83,8 +83,16 @@ def upload_db_to_drive(file_id=None, filename="community.db", versioned=False):
         file = DRIVE_SERVICE.files().create(body=file_metadata, media_body=media, fields="id").execute()
     return file.get("id")
 
-# Download DB file from Drive (or create one if not exist)
-db_file_id = download_db_from_drive()
+# 將 DB 延後下載，避免 SSL 初始化失敗
+if "db_loaded" not in st.session_state:
+    try:
+        db_file_id = download_db_from_drive()
+        st.session_state.db_loaded = True
+    except Exception as e:
+        st.error(f"⚠️ 無法從 Google Drive 載入資料庫：{e}")
+        db_file_id = None
+else:
+    db_file_id = None
 DB_PATH = "community.db"
 conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 c = conn.cursor()
