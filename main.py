@@ -309,4 +309,4 @@ for post in posts:
 # ✅ 所有元件都初始化完成後，再安全觸發 rerun
 if st.session_state.get("pending_rerun"):
     st.session_state["pending_rerun"] = False
-    st.experimental_rerun()
+    st.rerun()
