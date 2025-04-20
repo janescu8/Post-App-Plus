@@ -125,6 +125,13 @@ def upload_to_drive(uploaded_file):
         fields="id"
     ).execute()
     file_id = uploaded.get("id")
+
+    # 設定檔案為公開可讀
+    DRIVE_SERVICE.permissions().create(
+        fileId=file_id,
+        body={"role": "reader", "type": "anyone"},
+    ).execute()
+
     return f"https://drive.google.com/uc?export=view&id={file_id}"
 
 # =============================================================================
