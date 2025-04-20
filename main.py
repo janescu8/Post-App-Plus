@@ -158,9 +158,12 @@ if st.session_state.user is None:
     login_ui()
     st.stop()
 
-if st.session_state.get("logged_in"):
-    st.session_state.logged_in = False
-    st.experimental_rerun()
+try:
+    if st.session_state.get("logged_in"):
+        st.session_state.logged_in = False
+        st.experimental_rerun()
+except Exception as e:
+    st.warning("⚠️ 無法重新整理頁面，請手動刷新。")
 
 # =============================================================================
 # 📬 私訊功能 | Messaging
