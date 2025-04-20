@@ -7,75 +7,76 @@ import os
 import json
 from google.oauth2 import service_account
 
-# --- GCP 認證（透過 secrets.toml） ---
+# --- GCP 認證 ---
 creds_info = st.secrets["gcp_service_account"]
 creds = service_account.Credentials.from_service_account_info(creds_info)
 
 # --- 資料庫模型 ---
 Base = declarative_base()
-
 class User(Base):
     __tablename__ = "users"
-    id        = Column(Integer, primary_key=True)
-    username  = Column(String, unique=True, nullable=False)
-    pw_hash   = Column(String, nullable=False)
-    is_admin  = Column(Boolean, default=False)
+    id = Column(Integer, primary_key=True)
+    username = Column(String, unique=True, nullable=False)
+    pw_hash = Column(String, nullable=False)
+    is_admin = Column(Boolean, default=False)
 
 class Post(Base):
     __tablename__ = "posts"
-    id        = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True)
     author_id = Column(Integer, ForeignKey("users.id"))
-    content   = Column(Text, nullable=True)
-    image     = Column(String, nullable=True)
-    created   = Column(DateTime, default=datetime.datetime.utcnow)
-    author    = relationship("User")
+    content = Column(Text, nullable=True)
+    image = Column(String, nullable=True)
+    created = Column(DateTime, default=datetime.datetime.utcnow)
+    author = relationship("User")
 
 class Comment(Base):
     __tablename__ = "comments"
-    id        = Column(Integer, primary_key=True)
-    post_id   = Column(Integer, ForeignKey("posts.id"))
+    id = Column(Integer, primary_key=True)
+    post_id = Column(Integer, ForeignKey("posts.id"))
     author_id = Column(Integer, ForeignKey("users.id"))
-    content   = Column(Text, nullable=False)
-    created   = Column(DateTime, default=datetime.datetime.utcnow)
-    author    = relationship("User")
-    post      = relationship("Post")
+    content = Column(Text, nullable=False)
+    created = Column(DateTime, default=datetime.datetime.utcnow)
+    author = relationship("User")
+    post = relationship("Post")
 
 class Like(Base):
     __tablename__ = "likes"
-    id        = Column(Integer, primary_key=True)
-    post_id   = Column(Integer, ForeignKey("posts.id"))
-    user_id   = Column(Integer, ForeignKey("users.id"))
-    post      = relationship("Post")
-    user      = relationship("User")
+    id = Column(Integer, primary_key=True)
+    post_id = Column(Integer, ForeignKey("posts.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    post = relationship("Post")
+    user = relationship("User")
 
 class Message(Base):
     __tablename__ = "messages"
-    id        = Column(Integer, primary_key=True)
-    from_id   = Column(Integer, ForeignKey("users.id"))
-    to_id     = Column(Integer, ForeignKey("users.id"))
-    content   = Column(Text, nullable=False)
-    created   = Column(DateTime, default=datetime.datetime.utcnow)
-    sender    = relationship("User", foreign_keys=[from_id])
-    receiver  = relationship("User", foreign_keys=[to_id])
+    id = Column(Integer, primary_key=True)
+    from_id = Column(Integer, ForeignKey("users.id"))
+    to_id = Column(Integer, ForeignKey("users.id"))
+    content = Column(Text, nullable=False)
+    created = Column(DateTime, default=datetime.datetime.utcnow)
+    sender = relationship("User", foreign_keys=[from_id])
+    receiver = relationship("User", foreign_keys=[to_id])
 
-# 初始化 DB
-engine = create_engine("sqlite:///community.db")
+# --- 初始化 DB ---
+DB_PATH = os.environ.get("DB_PATH", "/mnt/data/community.db")
+engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 db = Session()
 
-# 上傳資料夾
-UPLOAD_DIR = "uploads"
+# --- 上傳資料夾 ---
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/mnt/data/uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Session state
+# --- Session 狀態 ---
 if "user_id" not in st.session_state:
     st.session_state.user_id = None
 
-# --- 回呼函式 ---
+# --- 重新載入 ---
 def rerun():
     st.experimental_rerun()
 
+# --- Callback 函式 ---
 def handle_signup(username, password):
     if db.query(User).filter_by(username=username).first():
         st.error("帳號已存在")
@@ -153,11 +154,11 @@ def handle_send_message(to_username):
         st.session_state.message_text = ""
     rerun()
 
-# --- UI 邏輯 ---
+# --- UI 選單 ---
 menu = ["登入","註冊"] if st.session_state.user_id is None else ["主頁","私訊","後台","登出"]
 choice = st.sidebar.selectbox("選單", menu)
 
-# 未登入
+# --- 未登入 ---
 if st.session_state.user_id is None:
     if choice == "登入":
         st.subheader("🔑 登入")
@@ -171,17 +172,17 @@ if st.session_state.user_id is None:
         st.button("註冊", on_click=handle_signup, args=(st.session_state.get("signup_username"), st.session_state.get("signup_password")))
     st.stop()
 
-# 已登入
+# --- 已登入 ---
 user = db.query(User).get(st.session_state.user_id)
 st.sidebar.write(f"👤 {user.username} {'(Admin)' if user.is_admin else ''}")
 if choice == "登出":
     st.session_state.user_id = None
     rerun()
 
-# 主頁
+# --- 主頁 ---
 if choice == "主頁":
     st.title("社群廣場")
-    with st.form("post_form", clear_on_submit=False):
+    with st.form("post_form"):
         st.text_area("聊點什麼？", key="new_content")
         st.file_uploader("上傳圖片", type=["png","jpg","jpeg"], key="new_image")
         st.form_submit_button("貼文", on_click=handle_post)
@@ -198,7 +199,7 @@ if choice == "主頁":
         st.button("送出", key=f"comm_btn_{p.id}", on_click=handle_comment, args=(p.id,))
         st.markdown("---")
 
-# 私訊
+# --- 私訊 ---
 elif choice == "私訊":
     st.title("📩 私訊")
     users = db.query(User).filter(User.id != st.session_state.user_id).all()
@@ -216,7 +217,7 @@ elif choice == "私訊":
         st.write(f"**{sender}** ({m.created:%Y-%m-%d %H:%M})")
         st.write(m.content)
 
-# 後台管理
+# --- 後台管理 ---
 elif choice == "後台":
     if not user.is_admin:
         st.error("只有 Admin 能進入！")
@@ -229,4 +230,7 @@ elif choice == "後台":
         cols[1].button("切換Admin", key=f"adm_{u2.id}", on_click=handle_toggle_admin, args=(u2.id,))
     st.markdown("---")
     st.subheader("文章管理")
-    for p2 in db.query(Post).
+    for p2 in db.query(Post).order_by(Post.created.desc()).all():
+        cols = st.columns([4,1])
+        cols[0].write(f"{p2.author.username}: {p2.content[:20]}")
+        cols[1].button("刪除", key=f"del_{p2.id}", on_click=handle_delete_post, args=(p2.id,))
