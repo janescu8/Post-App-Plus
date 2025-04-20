@@ -153,6 +153,7 @@ if st.session_state.user is None:
             try:
                 c.execute("INSERT INTO users (username, pw_hash) VALUES (?, ?)", (username, hashed_pw))
                 conn.commit()
+                upload_db_to_drive(filename=DB_PATH, file_id=db_file_id)
                 st.success("✅ 註冊成功！請重新登入。")
             except sqlite3.IntegrityError:
                 st.error("⚠️ 使用者名稱已存在")
@@ -205,6 +206,7 @@ with st.form("post_form"):
         c.execute("INSERT INTO posts (author_id, content, image_url) VALUES (?, ?, ?)",
                   (st.session_state.user["id"], content, image_url))
         conn.commit()
+        upload_db_to_drive(filename=DB_PATH, file_id=db_file_id)
         st.success("貼文已發佈！")
 
 st.markdown("---")
@@ -225,6 +227,7 @@ for post in posts:
             c.execute("INSERT INTO likes (user_id, post_id) VALUES (?, ?)",
                       (st.session_state.user["id"], post_id))
             conn.commit()
+        upload_db_to_drive(filename=DB_PATH, file_id=db_file_id)
         except sqlite3.IntegrityError:
             st.warning("你已經按過讚了！")
 
@@ -238,6 +241,7 @@ for post in posts:
             c.execute("DELETE FROM comments WHERE post_id = ?", (post_id,))
             c.execute("DELETE FROM likes WHERE post_id = ?", (post_id,))
             conn.commit()
+            upload_db_to_drive(filename=DB_PATH, file_id=db_file_id)
             st.success("✅ 貼文已刪除")
             st.session_state["pending_rerun"] = True
 
@@ -252,6 +256,7 @@ for post in posts:
             c.execute("INSERT INTO comments (user_id, post_id, content) VALUES (?, ?, ?)",
                       (st.session_state.user["id"], post_id, comment_input))
             conn.commit()
+            upload_db_to_drive(filename=DB_PATH, file_id=db_file_id)
             st.session_state["pending_rerun"] = True
 
     st.markdown("---")
