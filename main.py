@@ -131,7 +131,7 @@ def get_messages(user_id):
     return c.fetchall()
 
 def login_ui():
-    st.title("\ud83c\udf89 歡迎來到 Mini 社群平台 | Welcome to Mini Social Platform")
+    st.title("🎉 歡迎來到 Mini 社群平台 | Welcome to Mini Social Platform")
     choice = st.sidebar.selectbox("選擇動作 | Select Action", ["註冊 | Register", "登入 | Login"])
 
     if choice.startswith("註冊"):
