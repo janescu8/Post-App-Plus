@@ -223,7 +223,6 @@ if st.session_state.user is None:
             user = authenticate_user(u, p)
             if user:
                 st.session_state.user = user
-                st.experimental_rerun()
             else:
                 st.error("帳號或密碼錯誤 | Invalid username or password.")
     st.stop()
@@ -235,7 +234,6 @@ action = st.sidebar.radio("功能選單 | Menu", ["主頁 | Home", "私訊 | Mes
 
 if action.endswith("Logout"):
     st.session_state.user = None
-    st.experimental_rerun()
 
 if action.startswith("Home"):
     st.title("社群廣場 | Community Square")
@@ -244,7 +242,6 @@ if action.startswith("Home"):
         img = st.file_uploader("上傳圖片 | Upload Image", type=["png","jpg","jpeg"])
         if st.button("貼文 | Post"):
             create_post(user["id"], text, upload_to_drive(img) if img else None)
-            st.experimental_rerun()
     for pid, author, content, img_url, created in get_posts():
         st.markdown("---")
         st.write(f"**{author}** 於 {created}")
@@ -255,14 +252,12 @@ if action.startswith("Home"):
         lbl = "❤️" if liked else "🤍"
         if st.button(f"{lbl} {get_like_count(pid)}", key=f"like_{pid}"):
             like_post(user["id"], pid) if not liked else unlike_post(user["id"], pid)
-            st.experimental_rerun()
         with st.expander("💬 留言 | Comment"):
             for u2, cmt, ct in get_comments(pid):
                 st.write(f"- **{u2}** ({ct}): {cmt}")
             new_c = st.text_input("新增留言 | Add Comment", key=f"cmt_{pid}")
             if st.button("送出 | Send", key=f"sendc_{pid}"):
                 add_comment(user["id"], pid, new_c)
-                st.experimental_rerun()
 
 elif action.startswith("Messages"):
     st.title("📨 私訊 | Direct Messages")
@@ -273,7 +268,6 @@ elif action.startswith("Messages"):
         rid = c.execute("SELECT id FROM users WHERE username=?", (to,)).fetchone()[0]
         send_message(user["id"], rid, msg)
         st.success("已送出 | Sent.")
-        st.experimental_rerun()
     st.markdown("----")
     for mid, su, ru, mc, mct in get_messages(user["id"]):
         st.write(f"**{su}→{ru}** ({mct}): {mc}")
@@ -290,11 +284,9 @@ elif action.startswith("Admin"):
         cols[1].write("Admin" if isadm else "User")
         if cols[2].button("切換 | Toggle", key=f"tog_{uid}"):
             toggle_admin(uid)
-            st.experimental_rerun()
     st.subheader("文章管理 | Post Management")
     for pid, author, content, img_url, created in get_posts():
         cols = st.columns([4,1])
         cols[0].write(f"{author}: {content[:30]}")
         if cols[1].button("刪除 | Delete", key=f"del_{pid}"):
             delete_post(pid)
-            st.experimental_rerun()
