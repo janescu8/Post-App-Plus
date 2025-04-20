@@ -100,13 +100,19 @@ c.executescript("""
 """)
 conn.commit()
 
+def upload_db_to_drive(file_id=None, filename="community.db"):
+    media = MediaIoBaseUpload(open(filename, 'rb'), mimetype='application/x-sqlite3')
+    file_metadata = {"name": filename, "parents": [DRIVE_FOLDER_ID]}
+    if file_id:
+        file = DRIVE_SERVICE.files().update(fileId=file_id, media_body=media).execute()
+    else:
+        file = DRIVE_SERVICE.files().create(body=file_metadata, media_body=media, fields="id").execute()
+    return file.get("id")
+
 # 如果第一次沒載到 DB（等於是第一次建立），就立即上傳一份空 DB
 if db_file_id is None:
-    def upload_db_to_drive(file_id=None, filename="community.db"):
-        media = MediaIoBaseUpload(open(filename, 'rb'), mimetype='application/x-sqlite3')
-        file_metadata = {"name": filename, "parents": [DRIVE_FOLDER_ID]}
-        file = DRIVE_SERVICE.files().create(body=file_metadata, media_body=media, fields="id").execute()
-        return file.get("id")
+    db_file_id = upload_db_to_drive()
+    st.info("📂 已建立並上傳初始資料庫 community.db 至 Google Drive。")
     db_file_id = upload_db_to_drive()
     st.info("📂 已建立並上傳初始資料庫 community.db 至 Google Drive。")
 
