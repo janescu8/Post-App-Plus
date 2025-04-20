@@ -157,7 +157,7 @@ if st.session_state.user is None:
                     "username": username,
                     "is_admin": bool(row[2])
                 }
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("❌ 帳號或密碼錯誤")
     st.stop()
