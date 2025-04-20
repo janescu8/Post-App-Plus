@@ -227,9 +227,10 @@ for post in posts:
             c.execute("INSERT INTO likes (user_id, post_id) VALUES (?, ?)",
                       (st.session_state.user["id"], post_id))
             conn.commit()
-        upload_db_to_drive(filename=DB_PATH, file_id=db_file_id)
+            upload_db_to_drive(filename=DB_PATH, file_id=db_file_id)  # ✅ 縮排正確，放在 try 裡
         except sqlite3.IntegrityError:
             st.warning("你已經按過讚了！")
+
 
     like_count = c.execute("SELECT COUNT(*) FROM likes WHERE post_id = ?", (post_id,)).fetchone()[0]
     st.caption(f"❤️ {like_count} 個讚")
