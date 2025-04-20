@@ -4,6 +4,12 @@ from sqlalchemy.orm import sessionmaker, relationship, declarative_base
 import bcrypt
 import datetime
 import os
+import json
+from google.oauth2 import service_account
+
+# --- GCP 認證（透過 secrets.toml） ---
+creds_info = st.secrets["gcp_service_account"]
+creds = service_account.Credentials.from_service_account_info(creds_info)
 
 # --- 資料庫模型 ---
 Base = declarative_base()
@@ -52,23 +58,17 @@ class Message(Base):
     sender    = relationship("User", foreign_keys=[from_id])
     receiver  = relationship("User", foreign_keys=[to_id])
 
-# --- 初始化 DB 路徑與引擎 ---
-# 在 Streamlit Cloud 上，將資料庫放在 /mnt/data
-DB_PATH = os.environ.get("DB_PATH", "/mnt/data/community.db")
-engine = create_engine(
-    f"sqlite:///{DB_PATH}",
-    connect_args={"check_same_thread": False}
-)
+# 初始化 DB
+engine = create_engine("sqlite:///community.db")
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 db = Session()
 
-# --- 上傳資料夾 ---
-# 圖片存放在 /mnt/data/uploads
-UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/mnt/data/uploads")
+# 上傳資料夾
+UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# --- Session state ---
+# Session state
 if "user_id" not in st.session_state:
     st.session_state.user_id = None
 
