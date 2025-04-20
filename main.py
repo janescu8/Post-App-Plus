@@ -302,7 +302,7 @@ for post in posts:
             c.execute("INSERT INTO comments (user_id, post_id, content) VALUES (?, ?, ?)",
                       (st.session_state.user["id"], post_id, comment_input))
             conn.commit()
-            st.experimental_rerun()
+            st.session_state["pending_rerun"] = True
 
     st.markdown("---")
 
