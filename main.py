@@ -128,6 +128,41 @@ def upload_to_drive(uploaded_file):
     return f"https://drive.google.com/uc?export=view&id={file_id}"
 
 # =============================================================================
+# 🔐 使用者登入 / 註冊畫面 | Login / Register
+# =============================================================================
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+if st.session_state.user is None:
+    st.title("🔐 登入 / 註冊 Mini 社群平台")
+    auth_mode = st.radio("請選擇操作 | Select action", ["登入 | Login", "註冊 | Register"])
+
+    username = st.text_input("使用者名稱 | Username")
+    password = st.text_input("密碼 | Password", type="password")
+
+    if st.button("送出"):
+        if auth_mode.startswith("註冊"):
+            hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+            try:
+                c.execute("INSERT INTO users (username, pw_hash) VALUES (?, ?)", (username, hashed_pw))
+                conn.commit()
+                st.success("✅ 註冊成功！請重新登入。")
+            except sqlite3.IntegrityError:
+                st.error("⚠️ 使用者名稱已存在")
+        else:
+            row = c.execute("SELECT id, pw_hash, is_admin FROM users WHERE username = ?", (username,)).fetchone()
+            if row and bcrypt.checkpw(password.encode(), row[1].encode()):
+                st.session_state.user = {
+                    "id": row[0],
+                    "username": username,
+                    "is_admin": bool(row[2])
+                }
+                st.experimental_rerun()
+            else:
+                st.error("❌ 帳號或密碼錯誤")
+    st.stop()
+
+# =============================================================================
 # 📬 私訊功能 | Messaging
 # =============================================================================
 menu = st.sidebar.radio("選單 | Menu", ["首頁 | Home", "私訊 | Messages"])
