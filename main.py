@@ -216,7 +216,7 @@ if st.session_state.user is None:
 try:
     if st.session_state.get("logged_in"):
         st.session_state.logged_in = False
-        st.experimental_rerun()
+        st.session_state["pending_rerun"] = True
 except Exception as e:
     st.warning("⚠️ 無法重新整理頁面，請手動刷新。")
 
@@ -305,3 +305,8 @@ for post in posts:
             st.experimental_rerun()
 
     st.markdown("---")
+
+# ✅ 統一控制 rerun，避免 AttributeError 錯誤
+if st.session_state.get("pending_rerun"):
+    st.session_state["pending_rerun"] = False
+    st.experimental_rerun()
