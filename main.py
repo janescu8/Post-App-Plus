@@ -113,8 +113,6 @@ def upload_db_to_drive(file_id=None, filename="community.db"):
 if db_file_id is None:
     db_file_id = upload_db_to_drive()
     st.info("📂 已建立並上傳初始資料庫 community.db 至 Google Drive。")
-    db_file_id = upload_db_to_drive()
-    st.info("📂 已建立並上傳初始資料庫 community.db 至 Google Drive。")
 
 def upload_to_drive(uploaded_file):
     # 上傳圖片到 Google Drive 並回傳直接顯示的圖片網址
