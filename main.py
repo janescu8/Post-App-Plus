@@ -52,17 +52,23 @@ class Message(Base):
     sender    = relationship("User", foreign_keys=[from_id])
     receiver  = relationship("User", foreign_keys=[to_id])
 
-# 初始化 DB
-engine = create_engine("sqlite:///community.db")
+# --- 初始化 DB 路徑與引擎 ---
+# 在 Streamlit Cloud 上，將資料庫放在 /mnt/data
+DB_PATH = os.environ.get("DB_PATH", "/mnt/data/community.db")
+engine = create_engine(
+    f"sqlite:///{DB_PATH}",
+    connect_args={"check_same_thread": False}
+)
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 db = Session()
 
-# 上傳資料夾
-UPLOAD_DIR = "uploads"
+# --- 上傳資料夾 ---
+# 圖片存放在 /mnt/data/uploads
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/mnt/data/uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Session state
+# --- Session state ---
 if "user_id" not in st.session_state:
     st.session_state.user_id = None
 
@@ -223,7 +229,4 @@ elif choice == "後台":
         cols[1].button("切換Admin", key=f"adm_{u2.id}", on_click=handle_toggle_admin, args=(u2.id,))
     st.markdown("---")
     st.subheader("文章管理")
-    for p2 in db.query(Post).order_by(Post.created.desc()):
-        cols = st.columns([4,1])
-        cols[0].write(f"{p2.author.username}: {p2.content[:20]}")
-        cols[1].button("刪除", key=f"del_{p2.id}", on_click=handle_delete_post, args=(p2.id,))
+    for p2 in db.query(Post).
