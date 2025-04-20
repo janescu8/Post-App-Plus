@@ -62,6 +62,17 @@ conn = connect_db()
 c = conn.cursor()
 
 # 初始化資料表
+
+def get_messages(user_id):
+    return c.execute("""
+        SELECT messages.id, u1.username, u2.username, messages.content, messages.created
+        FROM messages
+        JOIN users u1 ON messages.sender_id = u1.id
+        JOIN users u2 ON messages.receiver_id = u2.id
+        WHERE sender_id = ? OR receiver_id = ?
+        ORDER BY messages.created DESC
+    """, (user_id, user_id)).fetchall()
+
 c.executescript("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
