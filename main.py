@@ -1,236 +1,300 @@
 import streamlit as st
-from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, ForeignKey
-from sqlalchemy.orm import sessionmaker, relationship, declarative_base
+import sqlite3
 import bcrypt
-import datetime
+import io
 import os
-import json
 from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
 
-# --- GCP 認證 ---
-creds_info = st.secrets["gcp_service_account"]
-creds = service_account.Credentials.from_service_account_info(creds_info)
+# -----------------------
+# 1. 讀取 GCP & Drive
+# -----------------------
+@st.cache_resource
+def get_drive_service():
+    creds_info = st.secrets["gcp_service_account"]
+    creds = service_account.Credentials.from_service_account_info(creds_info)
+    return build("drive", "v3", credentials=creds)
 
-# --- 資料庫模型 ---
-Base = declarative_base()
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True)
-    username = Column(String, unique=True, nullable=False)
-    pw_hash = Column(String, nullable=False)
-    is_admin = Column(Boolean, default=False)
+DRIVE_SERVICE = get_drive_service()
+DRIVE_FOLDER_ID = st.secrets["drive"]["folder_id"]
 
-class Post(Base):
-    __tablename__ = "posts"
-    id = Column(Integer, primary_key=True)
-    author_id = Column(Integer, ForeignKey("users.id"))
-    content = Column(Text, nullable=True)
-    image = Column(String, nullable=True)
-    created = Column(DateTime, default=datetime.datetime.utcnow)
-    author = relationship("User")
+def upload_to_drive(uploaded_file):
+    filename = uploaded_file.name
+    media = MediaIoBaseUpload(io.BytesIO(uploaded_file.read()),
+                              mimetype=uploaded_file.type,
+                              resumable=True)
+    file_metadata = {"name": filename, "parents": [DRIVE_FOLDER_ID]}
+    file = DRIVE_SERVICE.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields="id, webViewLink"
+    ).execute()
+    return file.get("webViewLink")
 
-class Comment(Base):
-    __tablename__ = "comments"
-    id = Column(Integer, primary_key=True)
-    post_id = Column(Integer, ForeignKey("posts.id"))
-    author_id = Column(Integer, ForeignKey("users.id"))
-    content = Column(Text, nullable=False)
-    created = Column(DateTime, default=datetime.datetime.utcnow)
-    author = relationship("User")
-    post = relationship("Post")
+# -----------------------
+# 2. 初始化 SQLite
+# -----------------------
+DB_PATH = "/mnt/data/community.db"
+conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+c = conn.cursor()
 
-class Like(Base):
-    __tablename__ = "likes"
-    id = Column(Integer, primary_key=True)
-    post_id = Column(Integer, ForeignKey("posts.id"))
-    user_id = Column(Integer, ForeignKey("users.id"))
-    post = relationship("Post")
-    user = relationship("User")
+def init_db():
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        pw_hash TEXT NOT NULL,
+        is_admin INTEGER DEFAULT 0
+    )""")
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS posts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        author_id INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        image_url TEXT,
+        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(author_id) REFERENCES users(id)
+    )""")
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS likes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        post_id INTEGER NOT NULL,
+        UNIQUE(user_id, post_id)
+    )""")
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        post_id INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender_id INTEGER NOT NULL,
+        receiver_id INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+    conn.commit()
 
-class Message(Base):
-    __tablename__ = "messages"
-    id = Column(Integer, primary_key=True)
-    from_id = Column(Integer, ForeignKey("users.id"))
-    to_id = Column(Integer, ForeignKey("users.id"))
-    content = Column(Text, nullable=False)
-    created = Column(DateTime, default=datetime.datetime.utcnow)
-    sender = relationship("User", foreign_keys=[from_id])
-    receiver = relationship("User", foreign_keys=[to_id])
+init_db()
 
-# --- 初始化 DB ---
-DB_PATH = os.environ.get("DB_PATH", "/mnt/data/community.db")
-engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
-Base.metadata.create_all(engine)
-Session = sessionmaker(bind=engine)
-db = Session()
+# -----------------------
+# 3. CRUD 函式
+# -----------------------
+def register_user(username, password):
+    pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    try:
+        c.execute("INSERT INTO users (username,pw_hash) VALUES (?,?)",
+                  (username, pw_hash))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
 
-# --- 上傳資料夾 ---
-UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/mnt/data/uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+def authenticate_user(username, password):
+    c.execute("SELECT id,pw_hash,is_admin FROM users WHERE username=?", (username,))
+    row = c.fetchone()
+    if row and bcrypt.checkpw(password.encode(), row[1].encode()):
+        return {"id": row[0], "username": username, "is_admin": bool(row[2])}
+    return None
 
-# --- Session 狀態 ---
-if "user_id" not in st.session_state:
-    st.session_state.user_id = None
+def create_post(author_id, content, image_url=None):
+    c.execute("INSERT INTO posts (author_id,content,image_url) VALUES (?,?,?)",
+              (author_id, content, image_url))
+    conn.commit()
 
-# --- 重新載入 ---
-def rerun():
-    st.experimental_rerun()
+def get_posts():
+    c.execute("""
+    SELECT p.id, u.username, p.content, p.image_url, p.created
+      FROM posts p JOIN users u ON p.author_id=u.id
+     ORDER BY p.created DESC
+    """)
+    return c.fetchall()
 
-# --- Callback 函式 ---
-def handle_signup(username, password):
-    if db.query(User).filter_by(username=username).first():
-        st.error("帳號已存在")
+def has_liked(user_id, post_id):
+    c.execute("SELECT 1 FROM likes WHERE user_id=? AND post_id=?", (user_id, post_id))
+    return c.fetchone() is not None
+
+def like_post(user_id, post_id):
+    try:
+        c.execute("INSERT INTO likes (user_id,post_id) VALUES (?,?)", (user_id, post_id))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        pass
+
+def unlike_post(user_id, post_id):
+    c.execute("DELETE FROM likes WHERE user_id=? AND post_id=?", (user_id, post_id))
+    conn.commit()
+
+def get_like_count(post_id):
+    c.execute("SELECT COUNT(*) FROM likes WHERE post_id=?", (post_id,))
+    return c.fetchone()[0]
+
+def add_comment(user_id, post_id, content):
+    c.execute("INSERT INTO comments (user_id,post_id,content) VALUES (?,?,?)",
+              (user_id, post_id, content))
+    conn.commit()
+
+def get_comments(post_id):
+    c.execute("""
+    SELECT u.username, c.content, c.created
+      FROM comments c JOIN users u ON c.user_id=u.id
+     WHERE c.post_id=?
+     ORDER BY c.created
+    """, (post_id,))
+    return c.fetchall()
+
+def send_message(sender_id, receiver_id, content):
+    c.execute("INSERT INTO messages (sender_id,receiver_id,content) VALUES (?,?,?)",
+              (sender_id, receiver_id, content))
+    conn.commit()
+
+def get_messages(user_id):
+    c.execute("""
+    SELECT m.id, u1.username, u2.username, m.content, m.created
+      FROM messages m
+      JOIN users u1 ON m.sender_id=u1.id
+      JOIN users u2 ON m.receiver_id=u2.id
+     WHERE m.sender_id=? OR m.receiver_id=?
+     ORDER BY m.created DESC
+    """, (user_id, user_id))
+    return c.fetchall()
+
+def toggle_admin(user_id):
+    c.execute("UPDATE users SET is_admin = 1 - is_admin WHERE id=?", (user_id,))
+    conn.commit()
+
+def delete_post(post_id):
+    c.execute("DELETE FROM posts WHERE id=?", (post_id,))
+    conn.commit()
+
+# -----------------------
+# 4. Streamlit UI
+# -----------------------
+st.set_page_config(page_title="Mini 社群平台", layout="wide")
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+# 登入 / 註冊
+if st.session_state.user is None:
+    st.title("🎉 歡迎來到 Mini 社群平台")
+    choice = st.sidebar.selectbox("選擇動作", ["登入", "註冊"])
+    if choice == "註冊":
+        u = st.text_input("帳號")
+        p = st.text_input("密碼", type="password")
+        if st.button("註冊"):
+            if register_user(u, p):
+                st.success("註冊成功，請切換到登入")
+            else:
+                st.error("帳號已存在")
     else:
-        pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        db.add(User(username=username, pw_hash=pw_hash))
-        db.commit()
-        st.success("註冊成功，請登入！")
-
-
-def handle_login(username, password):
-    user = db.query(User).filter_by(username=username).first()
-    if user and bcrypt.checkpw(password.encode(), user.pw_hash.encode()):
-        st.session_state.user_id = user.id
-        rerun()
-    else:
-        st.error("帳號或密碼錯誤")
-
-
-def handle_post():
-    content = st.session_state.get("new_content")
-    image_file = st.session_state.get("new_image")
-    img_path = None
-    if image_file:
-        ts = int(datetime.datetime.utcnow().timestamp() * 1000)
-        img_path = os.path.join(UPLOAD_DIR, f"{ts}_{image_file.name}")
-        with open(img_path, "wb") as f:
-            f.write(image_file.getbuffer())
-    db.add(Post(author_id=st.session_state.user_id, content=content, image=img_path))
-    db.commit()
-    st.session_state.new_content = ""
-    st.session_state.new_image = None
-    rerun()
-
-
-def handle_like(post_id):
-    uid = st.session_state.user_id
-    if not db.query(Like).filter_by(post_id=post_id, user_id=uid).first():
-        db.add(Like(post_id=post_id, user_id=uid))
-        db.commit()
-    rerun()
-
-
-def handle_comment(post_id):
-    key = f"new_comment_{post_id}"
-    content = st.session_state.get(key)
-    if content:
-        db.add(Comment(post_id=post_id, author_id=st.session_state.user_id, content=content))
-        db.commit()
-        st.session_state[key] = ""
-    rerun()
-
-
-def handle_delete_post(post_id):
-    p = db.query(Post).get(post_id)
-    if p:
-        db.delete(p)
-        db.commit()
-    rerun()
-
-
-def handle_toggle_admin(user_id):
-    u = db.query(User).get(user_id)
-    u.is_admin = not u.is_admin
-    db.commit()
-    rerun()
-
-
-def handle_send_message(to_username):
-    content = st.session_state.get("message_text")
-    if content:
-        to_user = db.query(User).filter_by(username=to_username).first()
-        db.add(Message(from_id=st.session_state.user_id, to_id=to_user.id, content=content))
-        db.commit()
-        st.session_state.message_text = ""
-    rerun()
-
-# --- UI 選單 ---
-menu = ["登入","註冊"] if st.session_state.user_id is None else ["主頁","私訊","後台","登出"]
-choice = st.sidebar.selectbox("選單", menu)
-
-# --- 未登入 ---
-if st.session_state.user_id is None:
-    if choice == "登入":
-        st.subheader("🔑 登入")
-        st.text_input("帳號", key="login_username")
-        st.text_input("密碼", type="password", key="login_password")
-        st.button("登入", on_click=handle_login, args=(st.session_state.get("login_username"), st.session_state.get("login_password")))
-    else:
-        st.subheader("🆕 註冊")
-        st.text_input("帳號", key="signup_username")
-        st.text_input("密碼", type="password", key="signup_password")
-        st.button("註冊", on_click=handle_signup, args=(st.session_state.get("signup_username"), st.session_state.get("signup_password")))
+        u = st.text_input("帳號", key="login_u")
+        p = st.text_input("密碼", type="password", key="login_p")
+        if st.button("登入"):
+            user = authenticate_user(u, p)
+            if user:
+                st.session_state.user = user
+                st.experimental_rerun()
+            else:
+                st.error("帳號或密碼錯誤")
     st.stop()
 
-# --- 已登入 ---
-user = db.query(User).get(st.session_state.user_id)
-st.sidebar.write(f"👤 {user.username} {'(Admin)' if user.is_admin else ''}")
-if choice == "登出":
-    st.session_state.user_id = None
-    rerun()
+# 已登入
+user = st.session_state.user
+st.sidebar.write(f"👤 {user['username']} {'(Admin)' if user['is_admin'] else ''}")
+action = st.sidebar.radio("功能選單",
+    ["主頁", "私訊", "後台管理", "登出"])
 
-# --- 主頁 ---
-if choice == "主頁":
+if action == "登出":
+    st.session_state.user = None
+    st.experimental_rerun()
+
+# 主頁：貼文、按讚、留言
+if action == "主頁":
     st.title("社群廣場")
-    with st.form("post_form"):
-        st.text_area("聊點什麼？", key="new_content")
-        st.file_uploader("上傳圖片", type=["png","jpg","jpeg"], key="new_image")
-        st.form_submit_button("貼文", on_click=handle_post)
-    st.markdown("---")
-    for p in db.query(Post).order_by(Post.created.desc()).all():
-        st.write(f"**{p.author.username}** 於 {p.created:%Y-%m-%d %H:%M}")
-        if p.content: st.write(p.content)
-        if p.image: st.image(p.image, use_column_width=True)
-        count = db.query(Like).filter_by(post_id=p.id).count()
-        st.button(f"👍 {count}", key=f"like_{p.id}", on_click=handle_like, args=(p.id,))
-        for c in db.query(Comment).filter_by(post_id=p.id).order_by(Comment.created).all():
-            st.write(f"> **{c.author.username}**: {c.content}")
-        st.text_input("回應...", key=f"new_comment_{p.id}")
-        st.button("送出", key=f"comm_btn_{p.id}", on_click=handle_comment, args=(p.id,))
+    with st.expander("發表新貼文"):
+        text = st.text_area("內容")
+        img = st.file_uploader("上傳圖片（選填）", type=["png","jpg","jpeg"])
+        if st.button("貼文", on_click=lambda: create_post(
+                user["id"], text,
+                upload_to_drive(img) if img else None
+            )):
+            st.experimental_rerun()
+
+    for pid, author, content, img_url, created in get_posts():
         st.markdown("---")
+        st.write(f"**{author}** 於 {created}")
+        st.write(content)
+        if img_url:
+            st.image(img_url, use_column_width=True)
+        # 按讚 / 取消
+        liked = has_liked(user["id"], pid)
+        like_label = "❤️" if liked else "🤍"
+        st.button(f"{like_label} {get_like_count(pid)}",
+                  key=f"like_{pid}",
+                  on_click=lambda p=pid: (
+                    like_post(user["id"], p) if not has_liked(user["id"], p)
+                    else unlike_post(user["id"], p),
+                    st.experimental_rerun()
+                  ))
+        # 留言
+        with st.expander("💬 留言"):
+            for u2, cmt, ct in get_comments(pid):
+                st.write(f"- **{u2}** ({ct}): {cmt}")
+            new_c = st.text_input("新增留言", key=f"cmt_{pid}")
+            if st.button("送出", key=f"sendc_{pid}",
+                         on_click=lambda p=pid, nc=new_c: (
+                             add_comment(user["id"], p, nc),
+                             st.experimental_rerun()
+                         )):
+                pass
 
-# --- 私訊 ---
-elif choice == "私訊":
-    st.title("📩 私訊")
-    users = db.query(User).filter(User.id != st.session_state.user_id).all()
-    names = [u.username for u in users]
-    st.selectbox("選擇對象", names, key="msg_to")
-    st.text_area("訊息", key="message_text")
-    st.button("送出", on_click=handle_send_message, args=(st.session_state.get("msg_to"),))
-    st.markdown("---")
-    to_user = db.query(User).filter_by(username=st.session_state.get("msg_to")).first()
-    for m in db.query(Message).filter(
-        ((Message.from_id==st.session_state.user_id)&(Message.to_id==to_user.id))|
-        ((Message.from_id==to_user.id)&(Message.to_id==st.session_state.user_id))
-    ).order_by(Message.created).all():
-        sender = "我" if m.from_id==st.session_state.user_id else to_user.username
-        st.write(f"**{sender}** ({m.created:%Y-%m-%d %H:%M})")
-        st.write(m.content)
+# 私訊
+elif action == "私訊":
+    st.title("📨 私訊")
+    users = [r[0] for r in c.execute("SELECT username FROM users").fetchall()]
+    to = st.selectbox("選擇對象", [u for u in users if u != user["username"]])
+    msg = st.text_area("內容")
+    if st.button("送出"):
+        c.execute("SELECT id FROM users WHERE username=?", (to,))
+        rid = c.fetchone()[0]
+        send_message(user["id"], rid, msg)
+        st.success("已送出")
+        st.experimental_rerun()
+    st.markdown("----")
+    for mid, su, ru, mc, mct in get_messages(user["id"]):
+        st.write(f"**{su}→{ru}** ({mct}): {mc}")
 
-# --- 後台管理 ---
-elif choice == "後台":
-    if not user.is_admin:
-        st.error("只有 Admin 能進入！")
+# Admin 後台
+elif action == "後台管理":
+    if not user["is_admin"]:
+        st.error("只有 Admin 能進入")
         st.stop()
     st.title("🔧 Admin 後台")
     st.subheader("使用者管理")
-    for u2 in db.query(User).all():
-        cols = st.columns([3,1])
-        cols[0].write(u2.username)
-        cols[1].button("切換Admin", key=f"adm_{u2.id}", on_click=handle_toggle_admin, args=(u2.id,))
-    st.markdown("---")
+    for uid, uname, isadm in c.execute(
+        "SELECT id,username,is_admin FROM users"
+    ).fetchall():
+        cols = st.columns([3,1,1])
+        cols[0].write(uname)
+        cols[1].write("Admin" if isadm else "User")
+        if cols[2].button("切換", key=f"tog_{uid}",
+                          on_click=lambda u=uid: (
+                              toggle_admin(u), st.experimental_rerun()
+                          )):
+            pass
+
     st.subheader("文章管理")
-    for p2 in db.query(Post).order_by(Post.created.desc()).all():
+    for pid, author, content, img_url, created in get_posts():
         cols = st.columns([4,1])
-        cols[0].write(f"{p2.author.username}: {p2.content[:20]}")
-        cols[1].button("刪除", key=f"del_{p2.id}", on_click=handle_delete_post, args=(p2.id,))
+        cols[0].write(f"{author}: {content[:30]}")
+        if cols[1].button("刪除", key=f"del_{pid}",
+                          on_click=lambda p=pid: (
+                              delete_post(p), st.experimental_rerun()
+                          )):
+            pass
