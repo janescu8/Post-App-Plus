@@ -36,13 +36,10 @@ def upload_to_drive(uploaded_file):
 # 2. 初始化 SQLite
 # -----------------------
 
-# 确保使用 Streamlit Cloud 可写路径，且不要被 SECRET 覆盖
-DB_PATH = "/mnt/data/community.db"
+# 在 Streamlit Cloud 使用當前目錄即可寫入
+DB_PATH = "community.db"
 
-# 先创建目录（如果不存在）
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-
-# 然后再打开数据库
+# 打開資料庫
 conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 c = conn.cursor()
 
