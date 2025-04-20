@@ -1,6 +1,4 @@
 import streamlit as st
-st.set_page_config(page_title="Mini 社群平台 | Mini Social Platform", layout="wide")
-
 import sqlite3
 import bcrypt
 import io
@@ -8,6 +6,9 @@ import os
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
+
+# ⚙️ 頁面配置 - 必須是第一個 Streamlit 指令
+st.set_page_config(page_title="Mini 社群平台 | Mini Social Platform", layout="wide")
 
 # -----------------------
 # 1. 讀取 GCP & Drive
